@@ -1,0 +1,65 @@
+services:
+  db:
+    image: mysql:8.0
+    container_name: vibeflow_db
+    restart: always
+    environment:
+      MYSQL_DATABASE: jira_board
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_USER: vibeflow_user
+      MYSQL_PASSWORD: vibeflow_password
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
+      timeout: 20s
+      retries: 10
+
+  backend:
+    build: ./backend
+    container_name: vibeflow_backend
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - DJANGO_SETTINGS_MODULE=vibeflow.settings
+      - DB_HOST=db
+      - DB_NAME=jira_board
+      - DB_USER=vibeflow_user
+      - DB_PASSWORD=vibeflow_password
+      - DB_PORT=3306
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py runserver 0.0.0.0:8000"
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/api/health/" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build: ./frontend
+    container_name: vibeflow_frontend
+    restart: always
+    depends_on:
+      - backend
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8000
+    ports:
+      - "8080:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: >
+      sh -c "npm run build &&
+             serve -s dist -l 5173"
+
+volumes:
+  mysql_data:
